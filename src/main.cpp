@@ -45,13 +45,63 @@ uint32_t pseudoRandomUint(uint32_t input, uint32_t scramble)
   return input;
 }
 
-float pseudoRandomFloat(uint32_t input, uint32_t scramble)
+float pseudoRandomFloat(uint32_t input, uint32_t scramble = 0x0)
 {
   return uintToFloat(pseudoRandomUint(input, scramble));
 }
 
+template<typename T>
+void swap(T* a, T* b)
+{
+  T temp = *a;
+
+  *a = *b;
+  *b = temp;
+}
+
 int main(int argc, char const *argv[])
 {
+  const uint32_t depth = 1;
+  const uint32_t res = 256;
+  const uint32_t resSqr = res * res;
+
+  const uint32_t arraySize = resSqr * depth;
+
+  float* whiteNoiseBuffer = new float[arraySize];
+  float* blueNoiseBuffer = new float[arraySize];
+  float* proposalBuffer = new float[arraySize];
+
+  for(uint32_t i = 0; i < depth; ++i)
+  {
+    uint32_t hash = hashUint32(i);
+
+    for(uint32_t j = 0; j < resSqr; ++j)
+    {
+      float pseudoRandomValue = pseudoRandomFloat(j, hash);
+
+      whiteNoiseBuffer[i * resSqr + j] = pseudoRandomValue;
+      blueNoiseBuffer[i * resSqr + j] = pseudoRandomValue;
+      proposalBuffer[i * resSqr + j] = pseudoRandomValue;
+    }
+  }
+
+  uint8_t* bitmapData = new uint8_t[arraySize];
+
+  for(uint32_t i = 0; i < resSqr; ++i)
+    bitmapData[i] = blueNoiseBuffer[0 * resSqr + i] * 255;
+
+  FILE* file = fopen("output.pgm", "wb");
+
+  fprintf(file, "P5 %u %u %u\n", res, res, 255);
+  fwrite(bitmapData, 1, resSqr, file);
+
+  fclose(file);
+
+  delete[] whiteNoiseBuffer;
+  delete[] blueNoiseBuffer;
+  delete[] proposalBuffer;
+
+  delete[] bitmapData;
 
   return 0;
 }
