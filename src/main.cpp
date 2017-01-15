@@ -4,6 +4,9 @@
 #include <math.h>
 #include <stdlib.h>
 
+#include <smmintrin.h>
+#include <sse_mathfun.h>
+
 template<typename T>
 void swap(T& a, T& b)
 {
@@ -61,6 +64,14 @@ float pseudoRandomFloat(uint32_t input, uint32_t scramble = 0x0)
   return uintToFloat(pseudoRandomUint(input, scramble));
 }
 
+void* allocAligned(size_t size)
+{
+  void* output;
+  posix_memalign(&output, 16, size);
+
+  return output;
+}
+
 void saveImage(const float* buffer, const char* name, const uint32_t size, const uint32_t dimension)
 {
   const uint32_t pixelCount = size * size;
@@ -89,54 +100,113 @@ float E(const float* buffer, const uint32_t size, const uint32_t depth, const fl
   const uint32_t pixelCount = size * size;
 
   float energySum = 0.f;
+  
+  static const __m128 signmask = _mm_castsi128_ps(_mm_set1_epi32(1 << 31));
+  static const __m128 offsetf = _mm_setr_ps(0.f, 1.f, 2.f, 3.f);
+  static const __m128i offseti = _mm_setr_epi32(0, 1, 2, 3);
 
-  for(int32_t ix = 0; ix < size; ++ix)
+  for(uint32_t i = 0; i < pixelCount; ++i)
   {
-    for(int32_t iy = 0; iy < size; ++iy)
+    const __m128i iv = _mm_set1_epi32(i);
+    const __m128 ix = _mm_set1_ps(i % size);
+    const __m128 iy = _mm_set1_ps(i / size);
+
+    for(uint32_t j = 0; j < pixelCount; j += 4)
     {
-      uint32_t i = ix * size + iy;
+      const __m128i jv = _mm_add_epi32(_mm_set1_epi32(j), offseti);
+      const __m128 jx = _mm_add_ps(_mm_set1_ps(j % size), offsetf);
+      const __m128 jy = _mm_set1_ps(j / size);
 
-      for(int32_t jx = 0; jx < size; ++jx)
+      __m128 imageDistX = _mm_andnot_ps(signmask, _mm_sub_ps(ix, jx));
+      __m128 imageDistY = _mm_andnot_ps(signmask, _mm_sub_ps(iy, jy));
+
+      const __m128 imageWrapX = _mm_sub_ps(_mm_set1_ps(size), imageDistX);
+      const __m128 imageWrapY = _mm_sub_ps(_mm_set1_ps(size), imageDistY);
+
+      const __m128 maskX = _mm_cmplt_ps(imageDistX, _mm_set1_ps(sizeOverTwo));
+      const __m128 maskY = _mm_cmplt_ps(imageDistY, _mm_set1_ps(sizeOverTwo));
+
+      imageDistX = _mm_or_ps(_mm_and_ps(maskX, imageDistX), _mm_andnot_ps(maskX, imageWrapX));
+      imageDistY = _mm_or_ps(_mm_and_ps(maskY, imageDistY), _mm_andnot_ps(maskY, imageWrapY));
+
+      const __m128 imageDistSqrX = _mm_mul_ps(imageDistX, imageDistX);
+      const __m128 imageDistSqrY = _mm_mul_ps(imageDistY, imageDistY);
+
+      const __m128 imageSqr = _mm_add_ps(imageDistSqrX, imageDistSqrY);
+      const __m128 imageEnergy = _mm_div_ps(imageSqr, _mm_set1_ps(sigmaISqr));
+
+      __m128 sampleSqr = _mm_setzero_ps();
+
+      for(uint32_t k = 0; k < depth; ++k)
       {
-        for(int32_t jy = 0; jy < size; ++jy)
-        {
-          uint32_t j = jx * size + jy;
+        const __m128 pBuffer = _mm_set1_ps(buffer[k * pixelCount + i]);
+        const __m128 qBuffer = _mm_load_ps(&buffer[k * pixelCount + j]);
+        const __m128 sampleDistance = _mm_andnot_ps(signmask, _mm_sub_ps(pBuffer, qBuffer));
+        const __m128 sampleDistanceSqr = _mm_mul_ps(sampleDistance, sampleDistance);
 
-          uint32_t imageDistanceX = abs(ix - jx);
-          uint32_t imageDistanceY = abs(iy - jy);
-
-          if(imageDistanceX > sizeOverTwo)
-            imageDistanceX = size - imageDistanceX;
-
-          if(imageDistanceY > sizeOverTwo)
-            imageDistanceY = size - imageDistanceY;
-
-          uint32_t imageDistanceSqrX = imageDistanceX * imageDistanceX;
-          uint32_t imageDistanceSqrY = imageDistanceY * imageDistanceY;
-
-          float imageSqr = imageDistanceSqrX + imageDistanceSqrY;
-
-          float sampleSqr = 0.f;
-
-          for(uint32_t k = 0; k < depth; ++k)
-          {
-            float sampleDistance = fabs(buffer[k * pixelCount + i] - buffer[k * pixelCount + j]);
-            float sampleDistanceSqr = sampleDistance * sampleDistance;
-
-            sampleSqr += sampleDistanceSqr;
-          }
-
-          float imageEnergy = imageSqr / sigmaISqr;
-          float sampleEnergy = pow(sqrt(sampleSqr), depthOverTwo) / sigmaSSqr;
-
-          float output = exp(-imageEnergy - sampleEnergy);
-          bool mask = !(i == j);
-
-          energySum += output * mask;
-        }
+        sampleSqr = _mm_add_ps(sampleSqr, sampleDistanceSqr);
       }
+
+      const __m128 samplePow = exp_ps(_mm_mul_ps(log_ps(_mm_sqrt_ps(sampleSqr)), _mm_set1_ps(depthOverTwo)));
+      const __m128 sampleEnergy = _mm_div_ps(samplePow, _mm_set1_ps(sigmaSSqr));
+
+      const __m128 output = exp_ps(_mm_sub_ps(_mm_sub_ps(_mm_setzero_ps(), imageEnergy), sampleEnergy));
+      const __m128 mask = _mm_castsi128_ps(_mm_cmpeq_epi32(iv, jv)); 
+
+      __m128 masked = _mm_andnot_si128(mask, output);
+      masked = _mm_hadd_ps(masked, masked);
+      masked = _mm_hadd_ps(masked, masked);
+
+      energySum += _mm_cvtss_f32(masked);
     }
   }
+
+  // for(uint32_t i = 0; i < pixelCount; ++i)
+  // {
+  //   const float ix = i % size;
+  //   const float iy = i / size;
+
+  //   for(uint32_t j = 0; j < pixelCount; ++j)
+  //   {
+  //     if(i == j)
+  //       continue;
+
+  //     const float jx = j % size;
+  //     const float jy = j / size;
+
+  //     float imageDistX = fabs(ix - jx);
+  //     float imageDistY = fabs(iy - jy);
+
+  //     if(imageDistX > sizeOverTwo)
+  //       imageDistX = size - imageDistX;
+
+  //     if(imageDistY > sizeOverTwo)
+  //       imageDistY = size - imageDistY;
+
+  //     float imageDistSqrX = imageDistX * imageDistX;
+  //     float imageDistSqrY = imageDistY * imageDistY;
+
+  //     float imageSqr = imageDistSqrX + imageDistSqrY;
+  //     float imageEnergy = imageSqr / sigmaISqr;
+
+  //     float sampleSqr = 0.f;
+
+  //     for(uint32_t k = 0; k < depth; ++k)
+  //     {
+  //       float sampleDistance = fabs(buffer[k * pixelCount + i] - buffer[k * pixelCount + j]);
+  //       float sampleDistanceSqr = sampleDistance * sampleDistance;
+
+  //       sampleSqr += sampleDistanceSqr;
+  //     }
+
+  //     float samplePow = pow(sqrt(sampleSqr), depthOverTwo);
+  //     float sampleEnergy = samplePow / sigmaSSqr;
+
+  //     float output = exp(-imageEnergy - sampleEnergy);
+
+  //     energySum += output;
+  //   }
+  // }
 
   return energySum;
 }
@@ -152,9 +222,9 @@ int main(int argc, char const *argv[])
   const uint32_t pixelCount = resolution * resolution;
   const uint32_t arraySize = pixelCount * depth;
 
-  float* whiteNoiseBuffer = new float[arraySize];
-  float* blueNoiseBuffer = new float[arraySize];
-  float* proposalBuffer = new float[arraySize];
+  float* whiteNoiseBuffer = (float*) allocAligned(sizeof(float) * arraySize);
+  float* blueNoiseBuffer = (float*) allocAligned(sizeof(float) * arraySize);
+  float* proposalBuffer = (float*) allocAligned(sizeof(float) * arraySize);
 
   for(uint32_t i = 0; i < depth; ++i)
   {
@@ -219,9 +289,9 @@ int main(int argc, char const *argv[])
   printf("blue noise result: %f\n", blueNoiseDistrib);
   printf("white noise result: %f\n", whiteNoiseDistrib);
 
-  delete[] whiteNoiseBuffer;
-  delete[] blueNoiseBuffer;
-  delete[] proposalBuffer;
+  free(whiteNoiseBuffer);
+  free(blueNoiseBuffer);
+  free(proposalBuffer);
 
   return 0;
 }

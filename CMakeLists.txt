@@ -8,11 +8,17 @@ SET( TYPE RelWithDebInfo )
 
 SET( SRC src)
 SET( INC include)
+SET( THR thirdparty )
 
 SET( PROJ_SOURCES
   ${SRC}/main.cpp
   )
+
 SET( PROJ_HEADERS
+  )
+
+SET( THIRD_PARTY
+  ${THR}/sse_mathfun.h
   )
 
 SET( CMAKE_CXX_FLAGS ${FLAGS} )
@@ -23,7 +29,8 @@ ADD_EXECUTABLE( ${CMAKE_PROJECT_NAME} ${PROJ_SOURCES} ${PROJ_HEADERS} )
 FIND_PACKAGE( Boost COMPONENTS system REQUIRED )
 
 INCLUDE_DIRECTORIES(
-  include
+  ${INC}
+  ${THR}
   ${Boost_INCLUDE_DIRS}
   )
 
