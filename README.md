@@ -6,3 +6,5 @@ This is a C++ project that generates a blue noise pattern through simulated anne
 Required dependencies are:
 
 * CMake 2.8
+* SSE 3
+* TBB 4.2
