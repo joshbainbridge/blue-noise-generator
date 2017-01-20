@@ -30,14 +30,29 @@ float bitsToFloat(uint32_t input)
   return output;
 }
 
+uint32_t floatToBits(float input)
+{
+  uint32_t output;
+  memcpy(&output, &input, sizeof(float));
+
+  return output;
+}
+
 float uintToFloat(uint32_t input)
 {
-  uint32_t output = (0x7F << 23) | (input >> 0x9);
+  uint32_t output = (0x7F << 23) | (input >> 9);
 
   return bitsToFloat(output) - 1.f;
 }
 
-uint32_t pseudoRandomUint(uint32_t input, uint32_t scramble = 0x0)
+uint32_t floatToUint(float input)
+{
+  uint32_t output = floatToBits(input + 1.f);
+
+  return output << 9;
+}
+
+uint32_t pseudoRandomUint(uint32_t input, uint32_t scramble = 0U)
 {
   input ^= scramble;
   input ^= input >> 17;
@@ -53,7 +68,7 @@ uint32_t pseudoRandomUint(uint32_t input, uint32_t scramble = 0x0)
   return input;
 }
 
-float pseudoRandomFloat(uint32_t input, uint32_t scramble = 0x0)
+float pseudoRandomFloat(uint32_t input, uint32_t scramble = 0U)
 {
   return uintToFloat(pseudoRandomUint(input, scramble));
 }
@@ -92,11 +107,32 @@ void saveImage(const float* buffer, const char* name, const uint32_t size, const
   delete[] bitmapData;
 }
 
+void saveData(const float* buffer, const char* name, const uint32_t size, const uint32_t depth)
+{
+  const uint32_t sizeSqr = size * size;
+  uint32_t* outputData = new uint32_t[sizeSqr * depth];
+
+  for(uint32_t i = 0; i < sizeSqr; ++i)
+    for(uint32_t j = 0; j < depth; ++j)
+      outputData[i * depth + j] = floatToUint(buffer[j * sizeSqr + i]);
+
+  FILE* file = fopen(name, "w");
+
+  fprintf(file, "Width: %u Height: %u Depth: %u Interval: 0 %u\n\n", size, size, depth, UINT32_MAX);
+  for(uint32_t i = 0; i < sizeSqr * depth; ++i)
+    fprintf(file, "%u\n", outputData[i]);
+
+  fclose(file);
+
+  delete[] outputData;
+}
+
 struct SimulationData
 {
   uint32_t size;
   uint32_t depth;
   uint32_t iterations;
+  uint32_t seed;
   float sigmaI;
   float sigmaS;
 };
@@ -112,14 +148,15 @@ public:
   void operator()(const tbb::blocked_range< uint32_t >& r)
   {
     const float* buffer = m_buffer;
-    const SimulationData sData = m_sData;
 
-    const float sizeOverTwo = sData.size * 0.5f;
-    const float depthOverTwo = sData.depth * 0.5f;
-    const float sigmaISqr = sData.sigmaI * sData.sigmaI;
-    const float sigmaSSqr = sData.sigmaS * sData.sigmaS;
+    const uint32_t depth = m_sData.depth;
+    const uint32_t size = m_sData.size;
+    const uint32_t sizeSqr = size * size;
 
-    const uint32_t sizeSqr = sData.size * sData.size;
+    const float sizeOverTwo = size * 0.5f;
+    const float depthOverTwo = depth * 0.5f;
+    const float sigmaISqr = m_sData.sigmaI * m_sData.sigmaI;
+    const float sigmaSSqr = m_sData.sigmaS * m_sData.sigmaS;
 
     float result = m_result;
 
@@ -130,20 +167,20 @@ public:
     for(uint32_t i = r.begin(); i < r.end(); ++i) 
     {
       const __m128i iv = _mm_set1_epi32(i);
-      const __m128 ix = _mm_set1_ps(i % sData.size);
-      const __m128 iy = _mm_set1_ps(i / sData.size);
+      const __m128 ix = _mm_set1_ps(i % size);
+      const __m128 iy = _mm_set1_ps(i / size);
 
       for(uint32_t j = 0; j < sizeSqr; j += 4)
       {
         const __m128i jv = _mm_add_epi32(_mm_set1_epi32(j), offseti);
-        const __m128 jx = _mm_add_ps(_mm_set1_ps(j % sData.size), offsetf);
-        const __m128 jy = _mm_set1_ps(j / sData.size);
+        const __m128 jx = _mm_add_ps(_mm_set1_ps(j % size), offsetf);
+        const __m128 jy = _mm_set1_ps(j / size);
 
         __m128 imageDistX = _mm_andnot_ps(signmask, _mm_sub_ps(ix, jx));
         __m128 imageDistY = _mm_andnot_ps(signmask, _mm_sub_ps(iy, jy));
 
-        const __m128 imageWrapX = _mm_sub_ps(_mm_set1_ps(sData.size), imageDistX);
-        const __m128 imageWrapY = _mm_sub_ps(_mm_set1_ps(sData.size), imageDistY);
+        const __m128 imageWrapX = _mm_sub_ps(_mm_set1_ps(size), imageDistX);
+        const __m128 imageWrapY = _mm_sub_ps(_mm_set1_ps(size), imageDistY);
 
         const __m128 maskX = _mm_cmplt_ps(imageDistX, _mm_set1_ps(sizeOverTwo));
         const __m128 maskY = _mm_cmplt_ps(imageDistY, _mm_set1_ps(sizeOverTwo));
@@ -159,7 +196,7 @@ public:
 
         __m128 sampleSqr = _mm_setzero_ps();
 
-        for(uint32_t k = 0; k < sData.depth; ++k)
+        for(uint32_t k = 0; k < depth; ++k)
         {
           const __m128 pBuffer = _mm_set1_ps(buffer[k * sizeSqr + i]);
           const __m128 qBuffer = _mm_load_ps(&buffer[k * sizeSqr + j]);
@@ -182,53 +219,6 @@ public:
         result += _mm_cvtss_f32(masked);
       }
     }
-
-    // for(uint32_t i = r.begin(); i < r.end(); ++i)
-    // {
-    //   const float ix = i % sData.size;
-    //   const float iy = i / sData.size;
-
-    //   for(uint32_t j = 0; j < sizeSqr; ++j)
-    //   {
-    //     if(i == j)
-    //       continue;
-
-    //     const float jx = j % sData.size;
-    //     const float jy = j / sData.size;
-
-    //     float imageDistX = fabs(ix - jx);
-    //     float imageDistY = fabs(iy - jy);
-
-    //     if(imageDistX > sizeOverTwo)
-    //       imageDistX = sData.size - imageDistX;
-
-    //     if(imageDistY > sizeOverTwo)
-    //       imageDistY = sData.size - imageDistY;
-
-    //     float imageDistSqrX = imageDistX * imageDistX;
-    //     float imageDistSqrY = imageDistY * imageDistY;
-
-    //     float imageSqr = imageDistSqrX + imageDistSqrY;
-    //     float imageEnergy = imageSqr / sigmaISqr;
-
-    //     float sampleSqr = 0.f;
-
-    //     for(uint32_t k = 0; k < sData.depth; ++k)
-    //     {
-    //       float sampleDistance = fabs(buffer[k * sizeSqr + i] - buffer[k * sizeSqr + j]);
-    //       float sampleDistanceSqr = sampleDistance * sampleDistance;
-
-    //       sampleSqr += sampleDistanceSqr;
-    //     }
-
-    //     float samplePow = pow(sqrt(sampleSqr), depthOverTwo);
-    //     float sampleEnergy = samplePow / sigmaSSqr;
-
-    //     float output = exp(-imageEnergy - sampleEnergy);
-
-    //     result += output;
-    //   }
-    // }
 
     m_result = result;
   }
@@ -259,6 +249,7 @@ int main(int argc, char const *argv[])
   sData.size = 32;
   sData.depth = 1;
   sData.iterations = 4096;
+  sData.seed = 0;
   sData.sigmaI = 2.1f;
   sData.sigmaS = 1.f;
 
@@ -268,13 +259,15 @@ int main(int argc, char const *argv[])
   float* blueNoiseBuffer = (float*) allocAligned(sizeof(float) * sData.depth * sizeSqr);
   float* proposalBuffer = (float*) allocAligned(sizeof(float) * sData.depth * sizeSqr);
 
+  uint32_t seedHash = hashUint32(sData.seed);
+
   for(uint32_t i = 0; i < sData.depth; ++i)
   {
-    uint32_t hash = hashUint32(i);
+    uint32_t depthHash = hashUint32(i);
 
     for(uint32_t j = 0; j < sizeSqr; ++j)
     {
-      float pseudoRandomValue = pseudoRandomFloat(j, hash);
+      float pseudoRandomValue = pseudoRandomFloat(j, seedHash ^ depthHash);
 
       whiteNoiseBuffer[i * sizeSqr + j] = pseudoRandomValue;
       blueNoiseBuffer[i * sizeSqr + j] = pseudoRandomValue;
@@ -324,14 +317,15 @@ int main(int argc, char const *argv[])
     }
   }
 
-  const char whiteNoiseImage[] = "outputWhiteNoise.pgm";
-  const char blueNoiseImage[] = "outputBlueNoise.pgm";
+  const char whiteNoiseImageName[] = "outputWhiteNoise.pgm";
+  const char blueNoiseImageName[] = "outputBlueNoise.pgm";
 
-  saveImage(whiteNoiseBuffer, whiteNoiseImage, sData.size, 0);
-  saveImage(blueNoiseBuffer, blueNoiseImage, sData.size, 0);
+  saveImage(whiteNoiseBuffer, whiteNoiseImageName, sData.size, 0);
+  saveImage(blueNoiseBuffer, blueNoiseImageName, sData.size, 0);
 
-  printf("white noise result: %f\n", whiteNoiseDistrib);
-  printf("blue noise result: %f\n", blueNoiseDistrib);
+  const char blueNoiseDataName[] = "outputBlueNoise.txt";
+
+  saveData(blueNoiseBuffer, blueNoiseDataName, sData.size, sData.depth);
 
   free(whiteNoiseBuffer);
   free(blueNoiseBuffer);
