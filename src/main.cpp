@@ -1,8 +1,9 @@
+#include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+#include <assert.h>
 #include <stdio.h>
 #include <math.h>
-#include <stdlib.h>
 #include <pmmintrin.h>
 
 #include <ssemathfun/sse_mathfun.h>
@@ -89,7 +90,7 @@ void swap(float* a, float* b)
   *b = temp;
 }
 
-void saveImage(const float* buffer, const char* name, const uint32_t size, const uint32_t dimension)
+void saveImage(const float* buffer, const char* name, uint32_t size, uint32_t dimension = 0U)
 {
   const uint32_t sizeSqr = size * size;
   uint8_t* bitmapData = new uint8_t[sizeSqr];
@@ -107,7 +108,7 @@ void saveImage(const float* buffer, const char* name, const uint32_t size, const
   delete[] bitmapData;
 }
 
-void saveData(const float* buffer, const char* name, const uint32_t size, const uint32_t depth)
+void saveData(const float* buffer, const char* name, uint32_t size, uint32_t depth)
 {
   const uint32_t sizeSqr = size * size;
   uint32_t* outputData = new uint32_t[sizeSqr * depth];
@@ -129,7 +130,7 @@ void saveData(const float* buffer, const char* name, const uint32_t size, const 
 
 struct SimulationData
 {
-  uint32_t size;
+  uint32_t m;
   uint32_t depth;
   uint32_t iterations;
   uint32_t seed;
@@ -150,7 +151,7 @@ public:
     const float* buffer = m_buffer;
 
     const uint32_t depth = m_sData.depth;
-    const uint32_t size = m_sData.size;
+    const uint32_t size = 1 << m_sData.m;
     const uint32_t sizeSqr = size * size;
 
     const float sizeOverTwo = size * 0.5f;
@@ -234,30 +235,104 @@ private:
 
 };
 
-float E(float* buffer, const SimulationData& sData)
+float E(const float* buffer, const SimulationData& sData)
 {
+  const uint32_t size = 1 << sData.m;
+  const uint32_t sizeSqr = size * size;
+
   SimulationSum sum(buffer, sData);
-  tbb::parallel_deterministic_reduce(tbb::blocked_range< uint32_t >(0, sData.size * sData.size), sum);
+  tbb::parallel_deterministic_reduce(tbb::blocked_range< uint32_t >(0, sizeSqr), sum);
   
   return sum.m_result;
+}
+
+void fourierTransform1D(const float* inReal, const float* inImag, float* outReal, float* outImag, uint32_t size)
+{
+  const float invSize = 1.f / size;
+
+  for(uint32_t i = 0; i < size; ++i)
+  {
+    const float constant = 2.f * M_PI * i * invSize;
+
+    float sumReal = 0.f;
+    float sumImag = 0.f;
+
+    for(uint32_t j = 0; j < size; ++j)
+    {
+      const float cosConstant = cos(j * constant);
+      const float sinConstant = sin(j * constant);
+
+      sumReal +=  inReal[j] * cosConstant + inImag[j] * sinConstant;
+      sumImag += -inReal[j] * sinConstant + inImag[j] * cosConstant;
+    }
+
+    outReal[i] = sumReal * invSize;
+    outImag[i] = sumImag * invSize;
+  }
+}
+
+void fourierTransform2D(const float* inReal, float* output, uint32_t size, uint32_t dimension = 0U)
+{
+  const uint32_t sizeSqr = size * size;
+
+  float* realTemp1 = new float[sizeSqr];
+  float* imagTemp1 = new float[sizeSqr];
+  float* realTemp2 = new float[sizeSqr];
+  float* imagTemp2 = new float[sizeSqr];
+
+  for(uint32_t i = 0; i < sizeSqr; ++i)
+  {
+    realTemp1[i] = inReal[dimension * sizeSqr + i] * pow(-1.f, (i % size) + (i / size));
+    imagTemp1[i] = 0.f;
+  }
+
+  for(uint32_t i = 0; i < size; ++i)
+  {
+    const uint32_t index = i * size;
+    fourierTransform1D(&realTemp1[index], &imagTemp1[index], &realTemp2[index], &imagTemp2[index], size);
+  }
+
+  for(uint32_t i = 0; i < sizeSqr; ++i)
+  {
+    realTemp1[i] = realTemp2[(i % size) * size + (i / size)];
+    imagTemp1[i] = imagTemp2[(i % size) * size + (i / size)];
+  }
+
+  for(uint32_t i = 0; i < size; ++i)
+  {
+    const uint32_t index = i * size;
+    fourierTransform1D(&realTemp1[index], &imagTemp1[index], &realTemp2[index], &imagTemp2[index], size);
+  }
+
+  for(uint32_t i = 0; i < sizeSqr; ++i)
+    output[i] = log(sqrt(realTemp2[i] * realTemp2[i] + imagTemp2[i] * imagTemp2[i]) + 1.f);
+
+  delete[] realTemp1;
+  delete[] imagTemp1;
+  delete[] realTemp2;
+  delete[] imagTemp2;
 }
 
 int main(int argc, char const *argv[])
 {
   SimulationData sData;
 
-  sData.size = 32;
+  sData.m = 5;
   sData.depth = 1;
   sData.iterations = 4096;
   sData.seed = 0;
   sData.sigmaI = 2.1f;
   sData.sigmaS = 1.f;
 
-  const uint32_t sizeSqr = sData.size * sData.size;
+  assert(sData.m > 1);
+
+  const uint32_t size = 1 << sData.m;
+  const uint32_t sizeSqr = size * size;
 
   float* whiteNoiseBuffer = (float*) allocAligned(sizeof(float) * sData.depth * sizeSqr);
   float* blueNoiseBuffer = (float*) allocAligned(sizeof(float) * sData.depth * sizeSqr);
   float* proposalBuffer = (float*) allocAligned(sizeof(float) * sData.depth * sizeSqr);
+  float* fourierBuffer = (float*) allocAligned(sizeof(float) * sizeSqr);
 
   uint32_t seedHash = hashUint32(sData.seed);
 
@@ -284,13 +359,13 @@ int main(int argc, char const *argv[])
 
   for(uint32_t i = 0; i < sData.iterations; ++i)
   {
-    uint32_t u1 = pseudoRandomFloat(i * 4 + 0) * sData.size;
-    uint32_t u2 = pseudoRandomFloat(i * 4 + 1) * sData.size;
-    uint32_t u3 = pseudoRandomFloat(i * 4 + 2) * sData.size;
-    uint32_t u4 = pseudoRandomFloat(i * 4 + 3) * sData.size;
+    uint32_t u1 = pseudoRandomFloat(i * 4 + 0) * size;
+    uint32_t u2 = pseudoRandomFloat(i * 4 + 1) * size;
+    uint32_t u3 = pseudoRandomFloat(i * 4 + 2) * size;
+    uint32_t u4 = pseudoRandomFloat(i * 4 + 3) * size;
 
-    uint32_t p1 = u1 * sData.size + u2;
-    uint32_t p2 = u3 * sData.size + u4;
+    uint32_t p1 = u1 * size + u2;
+    uint32_t p2 = u3 * size + u4;
 
     for(uint32_t j = 0; j < sData.depth; ++j)
       swap(&proposalBuffer[j * sizeSqr + p1], &proposalBuffer[j * sizeSqr + p2]);
@@ -317,19 +392,29 @@ int main(int argc, char const *argv[])
     }
   }
 
-  const char whiteNoiseImageName[] = "outputWhiteNoise.pgm";
-  const char blueNoiseImageName[] = "outputBlueNoise.pgm";
+  saveData(blueNoiseBuffer, "outputBlueNoise.txt", size, sData.depth);
 
-  saveImage(whiteNoiseBuffer, whiteNoiseImageName, sData.size, 0);
-  saveImage(blueNoiseBuffer, blueNoiseImageName, sData.size, 0);
+  saveImage(whiteNoiseBuffer, "outputWhiteNoise.pgm", size);
+  saveImage(blueNoiseBuffer, "outputBlueNoise.pgm", size);
 
-  const char blueNoiseDataName[] = "outputBlueNoise.txt";
+  fourierTransform2D(whiteNoiseBuffer, fourierBuffer, size);
 
-  saveData(blueNoiseBuffer, blueNoiseDataName, sData.size, sData.depth);
+  for(uint32_t i = 0; i < sizeSqr; ++i)
+    fourierBuffer[i] *= 50.f;
+  
+  saveImage(fourierBuffer, "outputFourierWhite.pgm", size);
+
+  fourierTransform2D(blueNoiseBuffer, fourierBuffer, size);
+
+  for(uint32_t i = 0; i < sizeSqr; ++i)
+    fourierBuffer[i] *= 50.f;
+  
+  saveImage(fourierBuffer, "outputFourierBlue.pgm", size);
 
   free(whiteNoiseBuffer);
   free(blueNoiseBuffer);
   free(proposalBuffer);
+  free(fourierBuffer);
 
   return 0;
 }
