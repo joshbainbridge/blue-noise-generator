@@ -213,7 +213,7 @@ public:
         const __m128 output = exp_ps(_mm_sub_ps(_mm_sub_ps(_mm_setzero_ps(), imageEnergy), sampleEnergy));
         const __m128 mask = _mm_castsi128_ps(_mm_cmpeq_epi32(iv, jv)); 
 
-        __m128 masked = _mm_andnot_si128(mask, output);
+        __m128 masked = _mm_andnot_ps(mask, output);
         masked = _mm_hadd_ps(masked, masked);
         masked = _mm_hadd_ps(masked, masked);
 
