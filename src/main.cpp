@@ -11,6 +11,10 @@
 #include <tbb/parallel_reduce.h>
 #include <tbb/blocked_range.h>
 
+#ifdef _WIN32
+#include <malloc.h>
+#endif
+
 uint32_t hashUint32(uint32_t input)
 {
   input = ~input + (input << 15);
@@ -76,10 +80,23 @@ float pseudoRandomFloat(uint32_t input, uint32_t scramble = 0U)
 
 void* allocAligned(uint32_t size)
 {
+#ifdef _WIN32
+  return _aligned_malloc(size, 16);
+#else
   void* output;
   posix_memalign(&output, 16, size);
 
   return output;
+#endif
+}
+
+void freeAligned(void* pointer)
+{
+#ifdef _WIN32
+  _aligned_free(pointer);
+#else
+  free(pointer);
+#endif
 }
 
 void swap(float* a, float* b)
@@ -411,10 +428,10 @@ int main(int argc, char const *argv[])
   
   saveImage(fourierBuffer, "outputFourierBlue.pgm", size);
 
-  free(whiteNoiseBuffer);
-  free(blueNoiseBuffer);
-  free(proposalBuffer);
-  free(fourierBuffer);
+  freeAligned(whiteNoiseBuffer);
+  freeAligned(blueNoiseBuffer);
+  freeAligned(proposalBuffer);
+  freeAligned(fourierBuffer);
 
   return 0;
 }
