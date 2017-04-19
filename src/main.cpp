@@ -4,6 +4,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include <math.h>
+#include <time.h>
 #include <pmmintrin.h>
 
 #include <ssemathfun/sse_mathfun.h>
@@ -143,6 +144,31 @@ void saveData(const float* buffer, const char* name, uint32_t size, uint32_t dep
   fclose(file);
 
   delete[] outputData;
+}
+
+void printProgress(const uint32_t iterations, uint32_t index, time_t start, time_t end)
+{
+  if(!(index % (iterations >> 8)))
+  {
+    float progress = (1.f / iterations) * index;
+
+    uint32_t markDone = 32 * progress;
+    uint32_t markLeft = 32 - markDone;
+
+    printf("\rGenerating: [");
+
+    for(uint32_t j = 0; j < markDone; ++j) printf("+");
+    for(uint32_t j = 0; j < markLeft; ++j) printf(" ");
+
+    printf("] %.2f%% ", 100.f * progress);
+
+    uint32_t timePast = end - start;
+    uint32_t timeEsti = timePast / progress;
+
+    printf("(%us|%us) ", timePast, timeEsti - timePast);
+
+    fflush(stdout);
+  }
 }
 
 struct SimulationData
@@ -374,6 +400,10 @@ int main(int argc, char const *argv[])
   float whiteNoiseDistrib = initialDistrib;
   float blueNoiseDistrib = initialDistrib;
 
+  time_t startTime = time(NULL);
+
+  printProgress(sData.iterations, 0, 0, 0);
+
   for(uint32_t i = 0; i < sData.iterations; ++i)
   {
     uint32_t u1 = pseudoRandomFloat(i * 4 + 0) * size;
@@ -388,6 +418,8 @@ int main(int argc, char const *argv[])
       swap(&proposalBuffer[j * sizeSqr + p1], &proposalBuffer[j * sizeSqr + p2]);
 
     float proposalDistrib = E(proposalBuffer, sData);
+
+    printProgress(sData.iterations, i + 1, startTime, time(NULL));
 
     if(proposalDistrib > blueNoiseDistrib)
     {
@@ -408,6 +440,8 @@ int main(int argc, char const *argv[])
       blueNoiseBuffer[j * sizeSqr + p2] = proposalBuffer[j * sizeSqr + p2];
     }
   }
+
+  printf("\n");
 
   saveData(blueNoiseBuffer, "outputBlueNoise.txt", size, sData.depth);
 
