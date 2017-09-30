@@ -108,17 +108,17 @@ void swap(float* a, float* b)
   *b = temp;
 }
 
-void saveImage(const float* buffer, const char* name, uint32_t size, uint32_t dimension = 0U)
+void saveImage(const float* buffer, const char* name, int size, int dimension = 0U)
 {
-  const uint32_t sizeSqr = size * size;
+  const int sizeSqr = size * size;
   uint8_t* bitmapData = new uint8_t[sizeSqr];
 
-  for(uint32_t i = 0; i < sizeSqr; ++i)
+  for (int i = 0; i < sizeSqr; ++i)
     bitmapData[i] = buffer[dimension * sizeSqr + i] * 255;
 
   FILE* file = fopen(name, "wb");
 
-  fprintf(file, "P5 %u %u %u\n", size, size, 255);
+  fprintf(file, "P5 %i %i %i\n", size, size, 255);
   fwrite(bitmapData, 1, sizeSqr, file);
 
   fclose(file);
@@ -126,19 +126,20 @@ void saveImage(const float* buffer, const char* name, uint32_t size, uint32_t di
   delete[] bitmapData;
 }
 
-void saveData(const float* buffer, const char* name, uint32_t size, uint32_t depth)
+void saveData(const float* buffer, const char* name, int size, int depth)
 {
-  const uint32_t sizeSqr = size * size;
+  const int sizeSqr = size * size;
   uint32_t* outputData = new uint32_t[sizeSqr * depth];
 
-  for(uint32_t i = 0; i < sizeSqr; ++i)
-    for(uint32_t j = 0; j < depth; ++j)
+  for (int i = 0; i < sizeSqr; ++i)
+    for (int j = 0; j < depth; ++j)
       outputData[i * depth + j] = floatToUint(buffer[j * sizeSqr + i]);
 
   FILE* file = fopen(name, "w");
 
-  fprintf(file, "Width: %u Height: %u Depth: %u Interval: 0 %u\n\n", size, size, depth, UINT32_MAX);
-  for(uint32_t i = 0; i < sizeSqr * depth; ++i)
+  fprintf(file, "Width: %i Height: %i Depth: %i Interval: 0 %u\n\n", size, size, depth, UINT32_MAX);
+
+  for (int i = 0; i < sizeSqr * depth; ++i)
     fprintf(file, "%u\n", outputData[i]);
 
   fclose(file);
@@ -146,26 +147,26 @@ void saveData(const float* buffer, const char* name, uint32_t size, uint32_t dep
   delete[] outputData;
 }
 
-void printProgress(const uint32_t iterations, uint32_t index, time_t start, time_t end)
+void printProgress(const int iterations, int index, time_t start, time_t end)
 {
-  if(!(index % (iterations >> 8)))
+  if (!(index % (iterations >> 8)))
   {
     float progress = (1.f / iterations) * index;
 
-    uint32_t markDone = 32 * progress;
-    uint32_t markLeft = 32 - markDone;
+    int markDone = 32 * progress;
+    int markLeft = 32 - markDone;
 
     printf("\rGenerating: [");
 
-    for(uint32_t j = 0; j < markDone; ++j) printf("+");
-    for(uint32_t j = 0; j < markLeft; ++j) printf(" ");
+    for (int j = 0; j < markDone; ++j) printf("+");
+    for (int j = 0; j < markLeft; ++j) printf(" ");
 
     printf("] %.2f%% ", 100.f * progress);
 
-    uint32_t timePast = end - start;
-    uint32_t timeEsti = timePast / progress;
+    int timePast = end - start;
+    int timeEsti = timePast / progress;
 
-    printf("(%us|%us) ", timePast, timeEsti - timePast);
+    printf("(%is|%is) ", timePast, timeEsti - timePast);
 
     fflush(stdout);
   }
@@ -173,9 +174,9 @@ void printProgress(const uint32_t iterations, uint32_t index, time_t start, time
 
 struct SimulationData
 {
-  uint32_t m;
-  uint32_t depth;
-  uint32_t iterations;
+  int m;
+  int depth;
+  int iterations;
   uint32_t seed;
   float sigmaI;
   float sigmaS;
@@ -189,13 +190,13 @@ public:
   SimulationSum(const float* buffer, const SimulationData& sData) : m_buffer(buffer), m_sData(sData), m_result(0.f) {}
   SimulationSum(SimulationSum& x, tbb::split) : m_buffer(x.m_buffer), m_sData(x.m_sData), m_result(0.f) {}
 
-  void operator()(const tbb::blocked_range< uint32_t >& r)
+  void operator()(const tbb::blocked_range< int >& r)
   {
     const float* buffer = m_buffer;
 
-    const uint32_t depth = m_sData.depth;
-    const uint32_t size = 1 << m_sData.m;
-    const uint32_t sizeSqr = size * size;
+    const int depth = m_sData.depth;
+    const int size = 1 << m_sData.m;
+    const int sizeSqr = size * size;
 
     const float sizeOverTwo = size * 0.5f;
     const float depthOverTwo = depth * 0.5f;
@@ -208,13 +209,13 @@ public:
     static const __m128 offsetf = _mm_setr_ps(0.f, 1.f, 2.f, 3.f);
     static const __m128i offseti = _mm_setr_epi32(0, 1, 2, 3);
 
-    for(uint32_t i = r.begin(); i < r.end(); ++i) 
+    for (int i = r.begin(); i < r.end(); ++i) 
     {
       const __m128i iv = _mm_set1_epi32(i);
       const __m128 ix = _mm_set1_ps(i % size);
       const __m128 iy = _mm_set1_ps(i / size);
 
-      for(uint32_t j = 0; j < sizeSqr; j += 4)
+      for (int j = 0; j < sizeSqr; j += 4)
       {
         const __m128i jv = _mm_add_epi32(_mm_set1_epi32(j), offseti);
         const __m128 jx = _mm_add_ps(_mm_set1_ps(j % size), offsetf);
@@ -240,7 +241,7 @@ public:
 
         __m128 sampleSqr = _mm_setzero_ps();
 
-        for(uint32_t k = 0; k < depth; ++k)
+        for (int k = 0; k < depth; ++k)
         {
           const __m128 pBuffer = _mm_set1_ps(buffer[k * sizeSqr + i]);
           const __m128 qBuffer = _mm_load_ps(&buffer[k * sizeSqr + j]);
@@ -280,27 +281,27 @@ private:
 
 float E(const float* buffer, const SimulationData& sData)
 {
-  const uint32_t size = 1 << sData.m;
-  const uint32_t sizeSqr = size * size;
+  const int size = 1 << sData.m;
+  const int sizeSqr = size * size;
 
   SimulationSum sum(buffer, sData);
-  tbb::parallel_deterministic_reduce(tbb::blocked_range< uint32_t >(0, sizeSqr), sum);
+  tbb::parallel_deterministic_reduce(tbb::blocked_range< int >(0, sizeSqr), sum);
   
   return sum.m_result;
 }
 
-void fourierTransform1D(const float* inReal, const float* inImag, float* outReal, float* outImag, uint32_t size)
+void fourierTransform1D(const float* inReal, const float* inImag, float* outReal, float* outImag, int size)
 {
   const float invSize = 1.f / size;
 
-  for(uint32_t i = 0; i < size; ++i)
+  for (int i = 0; i < size; ++i)
   {
     const float constant = 2.f * M_PI * i * invSize;
 
     float sumReal = 0.f;
     float sumImag = 0.f;
 
-    for(uint32_t j = 0; j < size; ++j)
+    for (int j = 0; j < size; ++j)
     {
       const float cosConstant = cos(j * constant);
       const float sinConstant = sin(j * constant);
@@ -314,41 +315,41 @@ void fourierTransform1D(const float* inReal, const float* inImag, float* outReal
   }
 }
 
-void fourierTransform2D(const float* inReal, float* output, uint32_t size, uint32_t dimension = 0U)
+void fourierTransform2D(const float* inReal, float* output, int size, int dimension = 0U)
 {
-  const uint32_t sizeSqr = size * size;
+  const int sizeSqr = size * size;
 
   float* realTemp1 = new float[sizeSqr];
   float* imagTemp1 = new float[sizeSqr];
   float* realTemp2 = new float[sizeSqr];
   float* imagTemp2 = new float[sizeSqr];
 
-  for(uint32_t i = 0; i < sizeSqr; ++i)
+  for (int i = 0; i < sizeSqr; ++i)
   {
     realTemp1[i] = inReal[dimension * sizeSqr + i] * pow(-1.f, (i % size) + (i / size));
     imagTemp1[i] = 0.f;
   }
 
-  for(uint32_t i = 0; i < size; ++i)
+  for (int i = 0; i < size; ++i)
   {
-    const uint32_t index = i * size;
+    const int index = i * size;
     fourierTransform1D(&realTemp1[index], &imagTemp1[index], &realTemp2[index], &imagTemp2[index], size);
   }
 
-  for(uint32_t i = 0; i < sizeSqr; ++i)
+  for (int i = 0; i < sizeSqr; ++i)
   {
     realTemp1[i] = realTemp2[(i % size) * size + (i / size)];
     imagTemp1[i] = imagTemp2[(i % size) * size + (i / size)];
   }
 
-  for(uint32_t i = 0; i < size; ++i)
+  for (int i = 0; i < size; ++i)
   {
-    const uint32_t index = i * size;
+    const int index = i * size;
     fourierTransform1D(&realTemp1[index], &imagTemp1[index], &realTemp2[index], &imagTemp2[index], size);
   }
 
-  for(uint32_t i = 0; i < sizeSqr; ++i)
-    output[i] = log(sqrt(realTemp2[i] * realTemp2[i] + imagTemp2[i] * imagTemp2[i]) + 1.f);
+  for (int i = 0; i < sizeSqr; ++i)
+    output[i] = log(sqrt(realTemp2[i] * realTemp2[i] + imagTemp2[i] * imagTemp2[i]) + 1.f) * 50.f;
 
   delete[] realTemp1;
   delete[] imagTemp1;
@@ -369,8 +370,8 @@ int main(int argc, char const *argv[])
 
   assert(sData.m > 1);
 
-  const uint32_t size = 1 << sData.m;
-  const uint32_t sizeSqr = size * size;
+  const int size = 1 << sData.m;
+  const int sizeSqr = size * size;
 
   float* whiteNoiseBuffer = (float*) allocAligned(sizeof(float) * sData.depth * sizeSqr);
   float* blueNoiseBuffer = (float*) allocAligned(sizeof(float) * sData.depth * sizeSqr);
@@ -379,11 +380,11 @@ int main(int argc, char const *argv[])
 
   uint32_t seedHash = hashUint32(sData.seed);
 
-  for(uint32_t i = 0; i < sData.depth; ++i)
+  for (int i = 0; i < sData.depth; ++i)
   {
     uint32_t depthHash = hashUint32(i);
 
-    for(uint32_t j = 0; j < sizeSqr; ++j)
+    for (int j = 0; j < sizeSqr; ++j)
     {
       float pseudoRandomValue = pseudoRandomFloat(j, seedHash ^ depthHash);
 
@@ -404,26 +405,26 @@ int main(int argc, char const *argv[])
 
   printProgress(sData.iterations, 0, 0, 0);
 
-  for(uint32_t i = 0; i < sData.iterations; ++i)
+  for (int i = 0; i < sData.iterations; ++i)
   {
-    uint32_t u1 = pseudoRandomFloat(i * 4 + 0) * size;
-    uint32_t u2 = pseudoRandomFloat(i * 4 + 1) * size;
-    uint32_t u3 = pseudoRandomFloat(i * 4 + 2) * size;
-    uint32_t u4 = pseudoRandomFloat(i * 4 + 3) * size;
+    int u1 = pseudoRandomFloat(i * 4 + 0) * size;
+    int u2 = pseudoRandomFloat(i * 4 + 1) * size;
+    int u3 = pseudoRandomFloat(i * 4 + 2) * size;
+    int u4 = pseudoRandomFloat(i * 4 + 3) * size;
 
-    uint32_t p1 = u1 * size + u2;
-    uint32_t p2 = u3 * size + u4;
+    int p1 = u1 * size + u2;
+    int p2 = u3 * size + u4;
 
-    for(uint32_t j = 0; j < sData.depth; ++j)
+    for (int j = 0; j < sData.depth; ++j)
       swap(&proposalBuffer[j * sizeSqr + p1], &proposalBuffer[j * sizeSqr + p2]);
 
     float proposalDistrib = E(proposalBuffer, sData);
 
     printProgress(sData.iterations, i + 1, startTime, time(NULL));
 
-    if(proposalDistrib > blueNoiseDistrib)
+    if (proposalDistrib > blueNoiseDistrib)
     {
-      for(uint32_t j = 0; j < sData.depth; ++j)
+      for (int j = 0; j < sData.depth; ++j)
       {
         proposalBuffer[j * sizeSqr + p1] = blueNoiseBuffer[j * sizeSqr + p1];
         proposalBuffer[j * sizeSqr + p2] = blueNoiseBuffer[j * sizeSqr + p2];
@@ -434,7 +435,7 @@ int main(int argc, char const *argv[])
 
     blueNoiseDistrib = proposalDistrib;
 
-    for(uint32_t j = 0; j < sData.depth; ++j)
+    for (int j = 0; j < sData.depth; ++j)
     {
       blueNoiseBuffer[j * sizeSqr + p1] = proposalBuffer[j * sizeSqr + p1];
       blueNoiseBuffer[j * sizeSqr + p2] = proposalBuffer[j * sizeSqr + p2];
@@ -449,16 +450,10 @@ int main(int argc, char const *argv[])
   saveImage(blueNoiseBuffer, "outputBlueNoise.pgm", size);
 
   fourierTransform2D(whiteNoiseBuffer, fourierBuffer, size);
-
-  for(uint32_t i = 0; i < sizeSqr; ++i)
-    fourierBuffer[i] *= 50.f;
   
   saveImage(fourierBuffer, "outputFourierWhite.pgm", size);
 
   fourierTransform2D(blueNoiseBuffer, fourierBuffer, size);
-
-  for(uint32_t i = 0; i < sizeSqr; ++i)
-    fourierBuffer[i] *= 50.f;
   
   saveImage(fourierBuffer, "outputFourierBlue.pgm", size);
 
