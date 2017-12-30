@@ -110,7 +110,7 @@ void swap(float* a, float* b)
 
 void saveImage(const float* buffer, const char* name, int size, int dimension = 0U)
 {
-  const int sizeSqr = size * size;
+  int sizeSqr = size * size;
   uint8_t* bitmapData = new uint8_t[sizeSqr];
 
   for (int i = 0; i < sizeSqr; ++i)
@@ -128,7 +128,7 @@ void saveImage(const float* buffer, const char* name, int size, int dimension = 
 
 void saveData(const float* buffer, const char* name, int size, int depth)
 {
-  const int sizeSqr = size * size;
+  int sizeSqr = size * size;
   uint32_t* outputData = new uint32_t[sizeSqr * depth];
 
   for (int i = 0; i < sizeSqr; ++i)
@@ -147,7 +147,7 @@ void saveData(const float* buffer, const char* name, int size, int depth)
   delete[] outputData;
 }
 
-void printProgress(const int iterations, int index, time_t start, time_t end)
+void printProgress(int iterations, int index, time_t start, time_t end)
 {
   if (!(index % (iterations >> 8)))
   {
@@ -194,68 +194,68 @@ public:
   {
     const float* buffer = m_buffer;
 
-    const int depth = m_sData.depth;
-    const int size = 1 << m_sData.m;
-    const int sizeSqr = size * size;
+    int depth = m_sData.depth;
+    int size = 1 << m_sData.m;
+    int sizeSqr = size * size;
 
-    const float sizeOverTwo = size * 0.5f;
-    const float depthOverTwo = depth * 0.5f;
-    const float sigmaISqr = m_sData.sigmaI * m_sData.sigmaI;
-    const float sigmaSSqr = m_sData.sigmaS * m_sData.sigmaS;
+    float sizeOverTwo = size * 0.5f;
+    float depthOverTwo = depth * 0.5f;
+    float sigmaISqr = m_sData.sigmaI * m_sData.sigmaI;
+    float sigmaSSqr = m_sData.sigmaS * m_sData.sigmaS;
 
     float result = m_result;
 
-    static const __m128 signmask = _mm_castsi128_ps(_mm_set1_epi32(1 << 31));
-    static const __m128 offsetf = _mm_setr_ps(0.f, 1.f, 2.f, 3.f);
-    static const __m128i offseti = _mm_setr_epi32(0, 1, 2, 3);
+    static __m128 signmask = _mm_castsi128_ps(_mm_set1_epi32(1 << 31));
+    static __m128 offsetf = _mm_setr_ps(0.f, 1.f, 2.f, 3.f);
+    static __m128i offseti = _mm_setr_epi32(0, 1, 2, 3);
 
     for (int i = r.begin(); i < r.end(); ++i) 
     {
-      const __m128i iv = _mm_set1_epi32(i);
-      const __m128 ix = _mm_set1_ps(i % size);
-      const __m128 iy = _mm_set1_ps(i / size);
+      __m128i iv = _mm_set1_epi32(i);
+      __m128 ix = _mm_set1_ps(i % size);
+      __m128 iy = _mm_set1_ps(i / size);
 
       for (int j = 0; j < sizeSqr; j += 4)
       {
-        const __m128i jv = _mm_add_epi32(_mm_set1_epi32(j), offseti);
-        const __m128 jx = _mm_add_ps(_mm_set1_ps(j % size), offsetf);
-        const __m128 jy = _mm_set1_ps(j / size);
+        __m128i jv = _mm_add_epi32(_mm_set1_epi32(j), offseti);
+        __m128 jx = _mm_add_ps(_mm_set1_ps(j % size), offsetf);
+        __m128 jy = _mm_set1_ps(j / size);
 
         __m128 imageDistX = _mm_andnot_ps(signmask, _mm_sub_ps(ix, jx));
         __m128 imageDistY = _mm_andnot_ps(signmask, _mm_sub_ps(iy, jy));
 
-        const __m128 imageWrapX = _mm_sub_ps(_mm_set1_ps(size), imageDistX);
-        const __m128 imageWrapY = _mm_sub_ps(_mm_set1_ps(size), imageDistY);
+        __m128 imageWrapX = _mm_sub_ps(_mm_set1_ps(size), imageDistX);
+        __m128 imageWrapY = _mm_sub_ps(_mm_set1_ps(size), imageDistY);
 
-        const __m128 maskX = _mm_cmplt_ps(imageDistX, _mm_set1_ps(sizeOverTwo));
-        const __m128 maskY = _mm_cmplt_ps(imageDistY, _mm_set1_ps(sizeOverTwo));
+        __m128 maskX = _mm_cmplt_ps(imageDistX, _mm_set1_ps(sizeOverTwo));
+        __m128 maskY = _mm_cmplt_ps(imageDistY, _mm_set1_ps(sizeOverTwo));
 
         imageDistX = _mm_or_ps(_mm_and_ps(maskX, imageDistX), _mm_andnot_ps(maskX, imageWrapX));
         imageDistY = _mm_or_ps(_mm_and_ps(maskY, imageDistY), _mm_andnot_ps(maskY, imageWrapY));
 
-        const __m128 imageDistSqrX = _mm_mul_ps(imageDistX, imageDistX);
-        const __m128 imageDistSqrY = _mm_mul_ps(imageDistY, imageDistY);
+        __m128 imageDistSqrX = _mm_mul_ps(imageDistX, imageDistX);
+        __m128 imageDistSqrY = _mm_mul_ps(imageDistY, imageDistY);
 
-        const __m128 imageSqr = _mm_add_ps(imageDistSqrX, imageDistSqrY);
-        const __m128 imageEnergy = _mm_div_ps(imageSqr, _mm_set1_ps(sigmaISqr));
+        __m128 imageSqr = _mm_add_ps(imageDistSqrX, imageDistSqrY);
+        __m128 imageEnergy = _mm_div_ps(imageSqr, _mm_set1_ps(sigmaISqr));
 
         __m128 sampleSqr = _mm_setzero_ps();
 
         for (int k = 0; k < depth; ++k)
         {
-          const __m128 pBuffer = _mm_set1_ps(buffer[k * sizeSqr + i]);
-          const __m128 qBuffer = _mm_load_ps(&buffer[k * sizeSqr + j]);
-          const __m128 sampleDistance = _mm_andnot_ps(signmask, _mm_sub_ps(pBuffer, qBuffer));
-          const __m128 sampleDistanceSqr = _mm_mul_ps(sampleDistance, sampleDistance);
+          __m128 pBuffer = _mm_set1_ps(buffer[k * sizeSqr + i]);
+          __m128 qBuffer = _mm_load_ps(&buffer[k * sizeSqr + j]);
+          __m128 sampleDistance = _mm_andnot_ps(signmask, _mm_sub_ps(pBuffer, qBuffer));
+          __m128 sampleDistanceSqr = _mm_mul_ps(sampleDistance, sampleDistance);
 
           sampleSqr = _mm_add_ps(sampleSqr, sampleDistanceSqr);
         }
 
-        const __m128 samplePow = exp_ps(_mm_mul_ps(log_ps(_mm_sqrt_ps(sampleSqr)), _mm_set1_ps(depthOverTwo)));
-        const __m128 sampleEnergy = _mm_div_ps(samplePow, _mm_set1_ps(sigmaSSqr));
+        __m128 samplePow = exp_ps(_mm_mul_ps(log_ps(_mm_sqrt_ps(sampleSqr)), _mm_set1_ps(depthOverTwo)));
+        __m128 sampleEnergy = _mm_div_ps(samplePow, _mm_set1_ps(sigmaSSqr));
 
-        const __m128 output = exp_ps(_mm_sub_ps(_mm_sub_ps(_mm_setzero_ps(), imageEnergy), sampleEnergy));
-        const __m128 mask = _mm_castsi128_ps(_mm_cmpeq_epi32(iv, jv)); 
+        __m128 output = exp_ps(_mm_sub_ps(_mm_sub_ps(_mm_setzero_ps(), imageEnergy), sampleEnergy));
+        __m128 mask = _mm_castsi128_ps(_mm_cmpeq_epi32(iv, jv));
 
         __m128 masked = _mm_andnot_ps(mask, output);
         masked = _mm_hadd_ps(masked, masked);
@@ -281,8 +281,8 @@ private:
 
 float E(const float* buffer, const SimulationData& sData)
 {
-  const int size = 1 << sData.m;
-  const int sizeSqr = size * size;
+  int size = 1 << sData.m;
+  int sizeSqr = size * size;
 
   SimulationSum sum(buffer, sData);
   tbb::parallel_deterministic_reduce(tbb::blocked_range< int >(0, sizeSqr), sum);
@@ -292,19 +292,19 @@ float E(const float* buffer, const SimulationData& sData)
 
 void fourierTransform1D(const float* inReal, const float* inImag, float* outReal, float* outImag, int size)
 {
-  const float invSize = 1.f / size;
+  float invSize = 1.f / size;
 
   for (int i = 0; i < size; ++i)
   {
-    const float constant = 2.f * M_PI * i * invSize;
+    float constant = 2.f * M_PI * i * invSize;
 
     float sumReal = 0.f;
     float sumImag = 0.f;
 
     for (int j = 0; j < size; ++j)
     {
-      const float cosConstant = cos(j * constant);
-      const float sinConstant = sin(j * constant);
+      float cosConstant = cos(j * constant);
+      float sinConstant = sin(j * constant);
 
       sumReal +=  inReal[j] * cosConstant + inImag[j] * sinConstant;
       sumImag += -inReal[j] * sinConstant + inImag[j] * cosConstant;
@@ -317,7 +317,7 @@ void fourierTransform1D(const float* inReal, const float* inImag, float* outReal
 
 void fourierTransform2D(const float* inReal, float* output, int size, int dimension = 0U)
 {
-  const int sizeSqr = size * size;
+  int sizeSqr = size * size;
 
   float* realTemp1 = new float[sizeSqr];
   float* imagTemp1 = new float[sizeSqr];
@@ -332,7 +332,7 @@ void fourierTransform2D(const float* inReal, float* output, int size, int dimens
 
   for (int i = 0; i < size; ++i)
   {
-    const int index = i * size;
+    int index = i * size;
     fourierTransform1D(&realTemp1[index], &imagTemp1[index], &realTemp2[index], &imagTemp2[index], size);
   }
 
@@ -344,7 +344,7 @@ void fourierTransform2D(const float* inReal, float* output, int size, int dimens
 
   for (int i = 0; i < size; ++i)
   {
-    const int index = i * size;
+    int index = i * size;
     fourierTransform1D(&realTemp1[index], &imagTemp1[index], &realTemp2[index], &imagTemp2[index], size);
   }
 
@@ -370,8 +370,8 @@ int main(int argc, char const *argv[])
 
   assert(sData.m > 1);
 
-  const int size = 1 << sData.m;
-  const int sizeSqr = size * size;
+  int size = 1 << sData.m;
+  int sizeSqr = size * size;
 
   float* whiteNoiseBuffer = (float*) allocAligned(sizeof(float) * sData.depth * sizeSqr);
   float* blueNoiseBuffer = (float*) allocAligned(sizeof(float) * sData.depth * sizeSqr);
