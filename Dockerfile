@@ -2,7 +2,7 @@ FROM ubuntu:20.04 AS builder
 WORKDIR /usr/src/project/
 COPY . .
 RUN apt-get update -y && apt-get install -y clang cmake libtbb-dev
-RUN cmake -B build . && cmake --build build -- -j
+RUN cmake -B build && cmake --build build -j
 
 FROM ubuntu:20.04
 WORKDIR /root/
