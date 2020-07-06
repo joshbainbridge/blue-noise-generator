@@ -21,3 +21,6 @@ Icon
 Network Trash Folder
 Temporary Items
 .apdisk
+
+# Exclude swap files from text editors
+*.swp
