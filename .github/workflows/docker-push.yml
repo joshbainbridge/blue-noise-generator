@@ -27,5 +27,5 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
           repository: joshbainbridge/blue-noise-generator
-		  tag_with_ref: true
-		  target: run-release
+          tag_with_ref: true
+          target: run-release
