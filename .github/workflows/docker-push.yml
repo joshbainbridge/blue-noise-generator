@@ -1,0 +1,31 @@
+name: Push
+
+on:
+  push:
+    branches:
+      - master
+    tags:
+      - v*
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Run tests
+        run: |
+          docker build . --file Dockerfile --tag test-image --target run-release
+          docker run --rm --entrypoint /usr/bin/echo test-image add test command
+
+  push:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Push image
+        uses: docker/build-push-action@v1
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+          repository: joshbainbridge/blue-noise-generator
+		  tag_with_ref: true
+		  target: run-release
