@@ -1,7 +1,6 @@
 # Blue Noise Generator:
 
-![](https://github.com/joshbainbridge/blue-noise-generator/workflows/Test/badge.svg)
-![](https://github.com/joshbainbridge/blue-noise-generator/workflows/Push/badge.svg)
+![](https://github.com/joshbainbridge/blue-noise-generator/workflows/Publish/badge.svg)
 
 This is a C++ project that generates a blue noise pattern through simulated annealing. Further details can be found in the SIGGRAPH 2016 paper "Blue-noise Dithered Sampling" by Iliyan Georgiev and Marcos Fajardo from Solid Angle. You can access this paper and others on the Solid Angle research page here: https://www.solidangle.com/arnold/research
 

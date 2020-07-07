@@ -1,24 +1,17 @@
-FROM ubuntu:20.04 AS toolchain
+FROM ubuntu:20.04 AS build
 RUN apt-get update -y && apt-get install -y clang cmake ninja-build libtbb-dev
-
-FROM toolchain AS build-debug
-COPY . .
-ENV TARGET Debug
-RUN cmake -G Ninja -DCMAKE_BUILD_TYPE=$TARGET -B build
-RUN cmake --build build -j
-
-FROM ubuntu:20.04 as run-debug
-RUN apt-get update -y && apt-get install -y libtbb2
-COPY --from=build-debug /build/generator .
-ENTRYPOINT ["./generator"]
-
-FROM toolchain AS build-release
 COPY . .
 ENV TARGET Release
 RUN cmake -G Ninja -DCMAKE_BUILD_TYPE=$TARGET -B build
-RUN cmake --build build -j
+RUN cmake --build build -j `nproc`
 
-FROM ubuntu:20.04 as run-release
+FROM ubuntu:20.04 AS platform
 RUN apt-get update -y && apt-get install -y libtbb2
-COPY --from=build-release /build/generator .
+
+FROM platform AS test
+COPY --from=build /test .
+ENTRYPOINT ["./test"]
+
+FROM platform AS generator
+COPY --from=build /build/generator .
 ENTRYPOINT ["./generator"]

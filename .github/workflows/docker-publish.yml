@@ -1,4 +1,4 @@
-name: Push
+name: Publish
 
 on:
   push:
@@ -6,6 +6,7 @@ on:
       - master
     tags:
       - v*
+  pull_request:
 
 jobs:
   test:
@@ -14,12 +15,13 @@ jobs:
       - uses: actions/checkout@v2
       - name: Run tests
         run: |
-          docker build . --file Dockerfile --tag test-image --target run-release
-          docker run --rm --entrypoint /usr/bin/echo test-image add test command
+          docker build . --file Dockerfile --tag test-image --target test
+          docker run --rm test-image
 
   push:
     needs: test
     runs-on: ubuntu-latest
+    if: github.event_name == 'push'
     steps:
       - uses: actions/checkout@v2
       - name: Push image
@@ -29,4 +31,4 @@ jobs:
           password: ${{ secrets.DOCKER_PASSWORD }}
           repository: joshbainbridge/blue-noise-generator
           tag_with_ref: true
-          target: run-release
+          target: generator
