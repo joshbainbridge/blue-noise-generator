@@ -22,5 +22,8 @@ Network Trash Folder
 Temporary Items
 .apdisk
 
-# Exclude swap files from text editors
+# Swap files from text editors
 *.swp
+
+# CTags files
+tags
