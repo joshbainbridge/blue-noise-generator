@@ -1,3 +1,6 @@
+# Add install target, configure and version files
+# https://cliutils.gitlab.io/modern-cmake/chapters/install/installing.html
+
 install(EXPORT ${PROJECT_NAME}Targets
 	NAMESPACE ${PROJECT_NAME}::
 	DESTINATION cmake)
