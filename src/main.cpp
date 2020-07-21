@@ -187,8 +187,8 @@ class SimulationSum
 public:
   float m_result;
 
-  SimulationSum(const float* buffer, const SimulationData& sData) : m_buffer(buffer), m_sData(sData), m_result(0.f) {}
-  SimulationSum(SimulationSum& x, tbb::split) : m_buffer(x.m_buffer), m_sData(x.m_sData), m_result(0.f) {}
+  SimulationSum(const float* buffer, const SimulationData& sData) : m_result(0.f), m_buffer(buffer), m_sData(sData) {}
+  SimulationSum(SimulationSum& x, tbb::split) : m_result(0.f), m_buffer(x.m_buffer), m_sData(x.m_sData) {}
 
   void operator()(const tbb::blocked_range< int >& r)
   {
@@ -397,8 +397,6 @@ int main(int argc, char const *argv[])
   tbb::task_scheduler_init scheduler;
 
   float initialDistrib = E(whiteNoiseBuffer, sData);
-
-  float whiteNoiseDistrib = initialDistrib;
   float blueNoiseDistrib = initialDistrib;
 
   time_t startTime = time(NULL);
