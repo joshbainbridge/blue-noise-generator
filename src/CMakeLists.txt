@@ -1,7 +1,7 @@
 # Create a default setup for targets
 
 function(target_default_setup TARGET)
-	target_compile_options(${TARGET} PRIVATE -Wall -fno-math-errno -msse2)
+	target_compile_options(${TARGET} PRIVATE -Wall -fno-math-errno -msse3)
 	target_compile_features(${TARGET} PRIVATE cxx_std_17)
 
 	set_target_properties(${TARGET} PROPERTIES CXX_EXTENSIONS OFF)
