@@ -9,7 +9,7 @@ FROM ubuntu:20.04 AS platform
 RUN apt-get update -y && apt-get install -y libtbb2
 
 FROM platform AS test
-COPY --from=build /src/test .
+COPY --from=build /src/scripts/test .
 ENTRYPOINT ["./test"]
 
 FROM platform AS generator

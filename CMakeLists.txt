@@ -1,41 +1,48 @@
-CMAKE_MINIMUM_REQUIRED( VERSION 2.8 )
-PROJECT( "generator" )
+cmake_minimum_required(VERSION 3.12)
 
-SET( CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_SOURCE_DIR}/cmake $ENV{CMAKE_MODULE_PATH} )
+# (step 1) Create the project and set the version
 
-SET( FLAGS -march=native )
+project(generator VERSION 0.0.1 LANGUAGES C CXX)
 
-SET( DEFINITIONS -DUSE_SSE2 )
+# (step 2) Prevent in source builds
+# https://cliutils.gitlab.io/modern-cmake/chapters/basics/structure.html
 
-SET( SRC src)
-SET( INC include)
-SET( THR thirdparty )
+file(TO_CMAKE_PATH "${PROJECT_BINARY_DIR}/CMakeLists.txt" LOC_PATH)
 
-SET( PROJ_SOURCES
-  ${SRC}/main.cpp
-  )
+if(EXISTS "${LOC_PATH}")
+	message(FATAL_ERROR "You cannot build in a source directory. Please make a
+		build subdirectory. Remove remove CMakeCache.txt and CMakeFiles.")
+endif()
 
-SET( PROJ_HEADERS
-  )
+# (step 3) Add the additional module paths
+# https://cliutils.gitlab.io/modern-cmake/chapters/basics/structure.html
 
-SET( THIRD_PARTY
-  ${THR}/ssemathfun/sse_mathfun.h
-  )
+list(INSERT CMAKE_MODULE_PATH 0 "${PROJECT_SOURCE_DIR}/cmake")
 
-SET( CMAKE_CXX_FLAGS ${FLAGS} )
+# (step 4) Set a safer default for the install prefix
+# https://cmake.org/cmake/help/latest/variable/CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT.html
 
-ADD_DEFINITIONS( ${DEFINITIONS} )
+if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
+	set(CMAKE_INSTALL_PREFIX "install" CACHE PATH "Install path prefix." FORCE)
+endif()
 
-ADD_EXECUTABLE( ${CMAKE_PROJECT_NAME} ${PROJ_SOURCES} ${PROJ_HEADERS} )
+# (step 5) Set the options for the build
+# https://blog.kitware.com/cmake-and-the-default-build-type/
 
-FIND_PACKAGE( TBB REQUIRED )
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+	set(CMAKE_BUILD_TYPE Debug CACHE STRING
+		"Options are Debug, Release, MinSizeRel or RelWithDebInfo." FORCE)
+	set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS Debug Release
+		MinSizeRel RelWithDebInfo)
+endif()
 
-INCLUDE_DIRECTORIES(
-  ${INC}
-  ${THR}
-  ${TBB_INCLUDE_DIRS}
-  )
+# Add other binary options here with option()...
 
-TARGET_LINK_LIBRARIES( ${CMAKE_PROJECT_NAME}
-  ${TBB_LIBRARIES}
-  )
+# (step 6) Include some modules
+
+include(EnableTesting)
+
+# (step 7) Add subdirectories
+
+add_subdirectory(cmake)
+add_subdirectory(src)
