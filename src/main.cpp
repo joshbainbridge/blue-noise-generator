@@ -184,6 +184,7 @@ struct SimulationData
 	uint32_t seed;
 	float sigmaI;
 	float sigmaS;
+	float maxT;
 };
 
 class SimulationSum
@@ -308,6 +309,24 @@ float E(const float* buffer, const SimulationData& sData)
 	return sum.m_result;
 }
 
+float t(int i, int maxI) { return 1 - static_cast<float>(i + 1) / maxI; }
+
+float temperature(float t, float maxT)
+{
+	assert(t >= 0);
+	assert(t <= 1);
+
+	return t * t * maxT;
+}
+
+float P(float e, float eNew, float T)
+{
+	if(eNew < e)
+		return 1.f;
+
+	return exp(-(eNew - e) / T);
+}
+
 void fourierTransform1D(const float* inReal, const float* inImag,
                         float* outReal, float* outImag, int size)
 {
@@ -395,6 +414,7 @@ int main(int argc, char const* argv[])
 	sData.seed = 0;
 	sData.sigmaI = 2.1f;
 	sData.sigmaS = 1.f;
+	sData.maxT = 0.1f;
 
 	assert(sData.m > 1);
 
@@ -438,10 +458,12 @@ int main(int argc, char const* argv[])
 
 	for(int i = 0; i < sData.iterations; ++i)
 	{
-		int u1 = pseudoRandomFloat(i * 4 + 0) * size;
-		int u2 = pseudoRandomFloat(i * 4 + 1) * size;
-		int u3 = pseudoRandomFloat(i * 4 + 2) * size;
-		int u4 = pseudoRandomFloat(i * 4 + 3) * size;
+		float T = temperature(t(i, sData.iterations), sData.maxT);
+
+		int u1 = pseudoRandomFloat(i * 5 + 0) * size;
+		int u2 = pseudoRandomFloat(i * 5 + 1) * size;
+		int u3 = pseudoRandomFloat(i * 5 + 2) * size;
+		int u4 = pseudoRandomFloat(i * 5 + 3) * size;
 
 		int p1 = u1 * size + u2;
 		int p2 = u3 * size + u4;
@@ -454,27 +476,28 @@ int main(int argc, char const* argv[])
 
 		printProgress(sData.iterations, i + 1, startTime, time(NULL));
 
-		if(proposalDistrib > blueNoiseDistrib)
+		if(P(blueNoiseDistrib, proposalDistrib, T) >=
+		   pseudoRandomFloat(i * 5 + 4))
 		{
+			blueNoiseDistrib = proposalDistrib;
+
 			for(int j = 0; j < sData.depth; ++j)
 			{
-				proposalBuffer[j * sizeSqr + p1] =
-				    blueNoiseBuffer[j * sizeSqr + p1];
-				proposalBuffer[j * sizeSqr + p2] =
-				    blueNoiseBuffer[j * sizeSqr + p2];
+				blueNoiseBuffer[j * sizeSqr + p1] =
+					proposalBuffer[j * sizeSqr + p1];
+				blueNoiseBuffer[j * sizeSqr + p2] =
+					proposalBuffer[j * sizeSqr + p2];
 			}
 
 			continue;
 		}
 
-		blueNoiseDistrib = proposalDistrib;
-
 		for(int j = 0; j < sData.depth; ++j)
 		{
-			blueNoiseBuffer[j * sizeSqr + p1] =
-			    proposalBuffer[j * sizeSqr + p1];
-			blueNoiseBuffer[j * sizeSqr + p2] =
-			    proposalBuffer[j * sizeSqr + p2];
+			proposalBuffer[j * sizeSqr + p1] =
+				blueNoiseBuffer[j * sizeSqr + p1];
+			proposalBuffer[j * sizeSqr + p2] =
+				blueNoiseBuffer[j * sizeSqr + p2];
 		}
 	}
 
